@@ -15,8 +15,8 @@
 #----------------------------------------------------------------------------------------------------------------------------
 
 #those are parameters for filtering the entries for certain parameters
-full_text_languages <- c("English", "German")
-subjects_included <- c("Medicine", "Biology", "Biotechnology")
+full_text_languages <- c("English", "German", "English, German")
+subjects_included <- c("Medicine", "Biology", "Biotechnology", "Physiology")
 #there might still be some more specialised subject categories we want to exclude
 subjects_excluded <- c("Agriculture", "Plant culture")
 APC_currencies_included <- c("EUR - Euro", "GBP - Pound Sterling", 
@@ -38,7 +38,7 @@ if(!dir.exists('Datasets/')) {
 }
 doaj_filename <- 'Datasets/DOAJ_journal_list_upd.csv'
 pmc_filename <- 'Datasets/PMC_journal_list_upd.csv'
-sjr_filename <- 'Datasets/Scopus_SJR_2016.xlsx'
+sjr_filename <- 'Datasets/Scopus_SJR_2016.csv'
 
 #update datasets
 download.file('https://doaj.org/csv', doaj_filename)
@@ -67,6 +67,9 @@ useful_cols_doaj <- c('Journal title', 'Journal URL', 'Journal ISSN (print versi
                       "Submission fee URL", "Submission fee amount", "Submission fee currency",
                       "Full text language", "Average number of weeks between submission and publication",
                       "Journal license", "Subjects")
+
+#manually fix subject category for one journal where the information is missing in DOAJ
+doaj_data$Subjects[doaj_data$`Journal title` == "Frontiers in Human Neuroscience"] <- "Medicine"
 
 #filter rows
 doaj_data <- doaj_data %>% select(one_of(useful_cols_doaj))
@@ -106,6 +109,20 @@ doaj_data$`APC in EUR (including 19% taxes)`[no_APC_journal] <- 0
 doaj_data <- doaj_data %>% 
   mutate(`APC below 2000 EUR` = logical_to_yes_no(`APC in EUR (including 19% taxes)` < 2000))
 
+#add information on special terms of the Charite library for specific journals
+special_conditions_publishers <- c("Frontiers Media S.A.", "BMJ Publishing Group",
+                                 "Cambridge University Press", "Karger Publishers",
+                                 "MDPI AG", "JMIR")
+special_conditions_journals <- c("PLoS ONE", "SAGE Open", "SAGE Open Medicine", 
+                                 "SAGE Open Medical Case Reports")
+has_special_conditions <- doaj_data$Publisher %in% special_conditions_publishers |
+                          doaj_data$`Journal title` %in% special_conditions_journals
+doaj_data[has_special_conditions,][["APC below 2000 EUR"]] <- "yes, library special terms"
+
+#for some journals there is a reduction in the journal fee but they still don't fall under the 2000€ threshold
+only_discount_journals <- c("BMJ Open Diabetes Research & Care")
+is_discount_only <- doaj_data$`Journal title` %in% only_discount_journals
+doaj_data[is_discount_only,][["APC below 2000 EUR"]] <- "no, but library discount applies"
 
 #simplify subject categories
 subjects_simplified <- lapply(doaj_data$Subjects, subject_simplification)
@@ -128,6 +145,7 @@ doaj_data <- doaj_data %>%
          -`Submission fee amount`, -`Submission fee currency`, 
          -`APC drop`, -`APC amount`, -Subjects)
 
+
 #----------------------------------------------------------------------------------------------------------------------------
 # PMC dataset
 #----------------------------------------------------------------------------------------------------------------------------
@@ -142,16 +160,15 @@ pmc_data <- pmc_data %>% select(one_of(useful_cols_pmc))
 # Scopus dataset
 #----------------------------------------------------------------------------------------------------------------------------
 
-scopus_data <- read.xls(sjr_filename) %>%
-  as_tibble()
+scopus_data <-  read_delim(sjr_filename, delim = ";", locale = locale(decimal_mark = ","))#read.xls(sjr_filename) %>% as_tibble()
 
-useful_cols_scopus <- c("Title", "Issn", "SJR", "SJR.Best.Quartile")
-scopus_data <- scopus_data %>% select(one_of(useful_cols_scopus)) %>%
-  separate(Issn, into = c("ISSN_remove", "eISSN", "pISSN")) %>%
-  select(-ISSN_remove) %>%
+useful_cols_scopus <- c("Title", "Issn", "SJR", "SJR Best Quartile")
+scopus_data <- scopus_data %>% 
+  select(one_of(useful_cols_scopus)) %>%
+  separate(Issn, into = c("eISSN", "pISSN")) %>%
   rename(`SJR Impact` = SJR) %>%
   mutate(`SJR Impact` = as.double(as.character(`SJR Impact`))) %>%
-  mutate(SJR.Best.Quartile = as.character(SJR.Best.Quartile))
+  mutate(`SJR Best Quartile` = as.character(`SJR Best Quartile`))
 scopus_data$eISSN[scopus_data$eISSN == ""] <- NA
 
 #introduce '-' character in the middle of eISSN/pISSN to make it consistent with other data sources
@@ -161,6 +178,10 @@ scopus_data$eISSN <- paste(substring(scopus_data$eISSN, 1, 4), substring(scopus_
 #unfortunately paste() doesn't know how to deal with NA's
 scopus_data$pISSN[scopus_data$pISSN == "NA-NA"] <- NA
 scopus_data$eISSN[scopus_data$eISSN == "NA-NA"] <- NA
+
+#filter all entries that have neither an eISSN nor an pISSN
+scopus_data <- scopus_data %>%
+  filter(!(is.na(eISSN) & is.na(pISSN)))
 
 
 #----------------------------------------------------------------------------------------------------------------------------
@@ -203,7 +224,7 @@ SJR_vec <- map2_dbl(joined_data$eISSN, joined_data$pISSN, get_scopus_var,
 
 #add the SJR quartile column
 SJR_quartile_vec <- map2_chr(joined_data$eISSN, joined_data$pISSN, get_scopus_var, 
-                             scopus_data = scopus_data, varname = "SJR.Best.Quartile")
+                             scopus_data = scopus_data, varname = "SJR Best Quartile")
 
 joined_data <- joined_data %>%
   add_column(`SJR Impact` = SJR_vec) %>%
@@ -230,6 +251,10 @@ joined_data <- joined_data %>%
 
 #filter duplicated journals (again, since some duplicates reappeared for some unknown reason)
 joined_data <- joined_data[!duplicated(joined_data$eISSN),]
+
+#convert NAs to "-" for final list
+joined_data$`SJR Impact`[is.na(joined_data$`SJR Impact`)] <- "-"
+joined_data$`SJR Subject Category Best Quartile`[is.na(joined_data$`SJR Subject Category Best Quartile`)] <- "-"
 
 #save resulting table in two formats (.csv for e.g. loading into Excel) or .RDS for use in the R-Shiny app
 if(!dir.exists('Table/')) {
