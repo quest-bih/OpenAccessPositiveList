@@ -24,7 +24,7 @@ url <- "https://twitter.com/intent/tweet?text=Hello%20world&url=https://shiny.rs
 ui <- fluidPage(
   fluidRow(
     column(width = 3,
-           tags$a(img(src = "Quest_Wortmarke_rgb.png", height = 183, width = 280),href="https://www.bihealth.org/de/forschung/quest-center/")
+           tags$a(img(src = "Quest_Wortmarke_neu.png", height = 118, width = 313),href="https://www.bihealth.org/de/forschung/quest-center/")
     ),
     column(width = 9,
            h1("Open Access Journal Whitelist", align = "center"),
@@ -101,7 +101,7 @@ server <- function(input, output) {
                                  ))
   })
 
-  #write(paste0("App visit at: ", Sys.time()), "/var/log/shiny-server/visitors.txt", append = TRUE)
+  write(paste0("App visit at: ", Sys.time()), "/var/log/shiny-server/visitors.txt", append = TRUE)
 }
 
 shinyApp(ui, server)
