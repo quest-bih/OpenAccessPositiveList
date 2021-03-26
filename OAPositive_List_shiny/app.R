@@ -1,4 +1,4 @@
-#This shiny app displays the Open Access Journal Whitelist in a
+#This shiny app displays the Open Access Journal Positive List in a
 #searchable and filterable format in the browser using the datatable package
 #
 
@@ -6,10 +6,10 @@ library(shiny)
 library(DT)
 library(tidyr)
 
-#read in .rds output from Journal_Whitelist_script.R here
-OA_Whitelist <- readRDS("data/Journal_Positive_List_Table_2021-03-03.rds")
+#read in .rds output from Journal_Positive_List_script.R here
+OA_Positive_List <- readRDS("data/Journal_Positive_List_Table_2021-03-03.rds")
 
-names(OA_Whitelist) <- c("Journal title", "SCImago Journal Rank (SJR)", "SJR Subject Category Quartile",
+names(OA_Positive_List) <- c("Journal title", "SCImago Journal Rank (SJR)", "SJR Subject Category Quartile",
                          "Journal article processing charges (APCs)", "Currency",
                          "APC in EUR (incl. 19% taxes)",
                          "APC below 2000 EUR", "APC information URL",
@@ -27,9 +27,9 @@ ui <- fluidPage(
            tags$a(img(src = "Quest_Wortmarke_neu.png", height = 118, width = 313),href="https://www.bihealth.org/de/forschung/quest-center/")
     ),
     column(width = 9,
-           h1("Open Access Journal Whitelist", align = "center"),
+           h1("Open Access Journal Positive List", align = "center"),
            h4("Contains biomedical open access journals that are listed on the Directory of Open Access Journals (DOAJ) and Pubmed Central.", align = "center"),
-           h4(HTML(paste0('Please note that this Open Access Journal Whitelist is only a first information source for finding
+           h4(HTML(paste0('Please note that this Open Access Journal Positive List is only a first information source for finding
               a suitable open access journal and is by no means an exhaustive list of all valid open access journals.
               For a more complete list please consider the ',a(href = 'https://doaj.org/', 'Directory of Open Access Journals (DOAJ)'),'.
               We do not check the quality of the listed journals ourselves, but incorporate journals listed in the DOAJ,
@@ -43,11 +43,11 @@ ui <- fluidPage(
                 sidebarPanel(
                   selectInput(inputId = "subjects",
                               label = "Subject category",
-                              choices = c("All", unique(OA_Whitelist$`Subject category`))),
+                              choices = c("All", unique(OA_Positive_List$`Subject category`))),
                   checkboxGroupInput("show_vars",
-                                     "Columns to show:", names(OA_Whitelist),
-                                     selected = names(OA_Whitelist)[c(-8, -11, -13, -15, -16)]),
-                  helpText('This ‘Open Access Journal Whitelist’ comprises international biomedical open access journals that
+                                     "Columns to show:", names(OA_Positive_List),
+                                     selected = names(OA_Positive_List)[c(-8, -11, -13, -15, -16)]),
+                  helpText('This ‘Open Access Journal Positive List’ comprises international biomedical open access journals that
                             obey certain quality standards. All journals are listed by the Directory of Open Access Journals (DOAJ) and
                             Pubmed Central (PMC). DOAJ ensures high quality standards for journals; individual journals have to apply at DOAJ
                             and are checked against a list of quality criteria. PMC stores the full-text version of open access articles and
@@ -71,16 +71,16 @@ ui <- fluidPage(
                            https://bibliothek.charite.de/publizieren/open_access/verlagsvereinbarungen/'),
                   width = 3
                 ),
-                mainPanel(DT::dataTableOutput("whitelist")))
+                mainPanel(DT::dataTableOutput("PositiveList")))
 )
 
 server <- function(input, output) {
   # choose columns to display
-  output$whitelist <- DT::renderDataTable({
+  output$PositiveList <- DT::renderDataTable({
     DT::datatable( data = if(input$subjects == "All") {
-                    OA_Whitelist[, input$show_vars, drop = FALSE]
+                    OA_Positive_List[, input$show_vars, drop = FALSE]
                   } else {
-                    OA_Whitelist[OA_Whitelist[["Subject category"]] == input$subjects,][, input$show_vars, drop = FALSE]
+                    OA_Positive_List[OA_Positive_List[["Subject category"]] == input$subjects,][, input$show_vars, drop = FALSE]
                   },
                   extensions = 'Buttons',
                   filter = 'top',
@@ -101,7 +101,7 @@ server <- function(input, output) {
                                  ))
   })
 
-  write(paste0("App visit at: ", Sys.time()), "/var/log/shiny-server/visitors.txt", append = TRUE)
+  #write(paste0("App visit at: ", Sys.time()), "/var/log/shiny-server/visitors.txt", append = TRUE)
 }
 
 shinyApp(ui, server)
