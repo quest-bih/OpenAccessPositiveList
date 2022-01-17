@@ -68,7 +68,7 @@ useful_cols_doaj <- c('Journal title', 'Journal URL', 'Journal ISSN (print versi
                       'Journal EISSN (online version)', 'Publisher',
                       'APC', 'APC information URL',
                       'APC amount', "Has other fees",
-                      "Other submission fees information URL",
+                      "Other fees information URL",
                       "Languages in which the journal accepts manuscripts",
                       "Average number of weeks between article submission and publication",
                       "Journal license", "Subjects")
@@ -126,8 +126,7 @@ doaj_data <- doaj_data %>%
   mutate(`APC below 2000 EUR` = logical_to_yes_no(`APC in EUR (including 19% taxes)` < 2000))
 
 #add information on special terms of the Charite library for specific journals
-special_conditions_publishers <- c("Frontiers Media S.A.",
-                                 "Cambridge University Press",
+special_conditions_publishers <- c("Cambridge University Press",
                                  "MDPI AG", "JMIR Publications")
 special_conditions_journals <- c("SAGE Open", "SAGE Open Medicine",
                                  "SAGE Open Medical Case Reports")
@@ -173,7 +172,7 @@ doaj_data <- doaj_data %>%
 
 #drop some columns
 doaj_data <- doaj_data %>%
-  select(-`Has other fees`, -`Other submission fees information URL`,
+  select(-`Has other fees`, -`Other fees information URL`,
          -`APC drop`, -`APC amount`, -Subjects)
 
 

@@ -7,7 +7,7 @@ library(DT)
 library(tidyr)
 
 #read in .rds output from Journal_Positive_List_script.R here
-OA_Positive_List <- readRDS("data/Journal_Positive_List_Table_2021-03-03.rds")
+OA_Positive_List <- readRDS("data/Journal_Positive_List_Table_2022-01-17.rds")
 
 names(OA_Positive_List) <- c("Journal title", "SCImago Journal Rank (SJR)", "SJR Subject Category Quartile",
                          "Journal article processing charges (APCs)", "Currency",
