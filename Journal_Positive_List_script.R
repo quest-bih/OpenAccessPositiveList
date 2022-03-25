@@ -46,7 +46,8 @@ sjr_filename <- 'Datasets/Scopus_SJR_2018.csv'
 
 #update datasets
 download.file('https://doaj.org/csv', doaj_filename)
-download.file('https://www.ncbi.nlm.nih.gov/pmc/journals/?format=csv', pmc_filename)
+pmc_list <- read_lines("https://www.ncbi.nlm.nih.gov/pmc/journals/?format=csv")
+write_lines(pmc_list, pmc_filename)
 download.file('http://www.scimagojr.com/journalrank.php?out=xls', sjr_filename, mode = "wb")
 
 exchange_currencies <- str_sub(APC_currencies_included, 1, 3)
