@@ -15,8 +15,9 @@
 #----------------------------------------------------------------------------------------------------------------------------
 
 source('Journal_Positive_List_functions.R')
-require(tidyverse)
-require(jsonlite)
+library(tidyverse)
+library(jsonlite)
+library(readxl)
 
 
 #----------------------------------------------------------------------------------------------------------------------------
@@ -24,7 +25,7 @@ require(jsonlite)
 #----------------------------------------------------------------------------------------------------------------------------
 
 #those are parameters for filtering the entries for certain parameters
-full_text_languages <- c("English", "German") %>% paste(collapse = "|")
+full_text_languages <- c("English", "German") |>  paste(collapse = "|")
 subjects_included <- c("Medicine", "Biology", "Biotechnology", "Physiology")
 #there might still be some more specialised subject categories we want to exclude
 subjects_excluded <- c("Agriculture", "Plant culture")
@@ -42,7 +43,7 @@ if(!dir.exists('Datasets/')) {
 }
 doaj_filename <- 'Datasets/DOAJ_journal_list_upd.csv'
 pmc_filename <- 'Datasets/PMC_journal_list_upd.csv'
-sjr_filename <- 'Datasets/Scopus_SJR_2018.csv'
+sjr_filename <- 'Datasets/Scopus_SJR_2023.csv'
 
 #update datasets
 download.file('https://doaj.org/csv', doaj_filename)
@@ -51,13 +52,14 @@ write_lines(pmc_list, pmc_filename)
 download.file('http://www.scimagojr.com/journalrank.php?out=xls', sjr_filename, mode = "wb")
 
 exchange_currencies <- str_sub(APC_currencies_included, 1, 3)
-exchange_currencies <- exchange_currencies[exchange_currencies != "EUR"]
+# exchange_currencies <- exchange_currencies[exchange_currencies != "EUR"]
 
-exchange_rates <- c(1.0,
-                    map_dbl(exchange_currencies, get_exchange_rate, currency_to = "EUR"),
+exchange_rates <- c(map_dbl(exchange_currencies, get_exchange_rate),
                     NA)
-names(exchange_rates) <- c("EUR", exchange_currencies, "-")
+names(exchange_rates) <- c(exchange_currencies, "-")
 
+
+# exchange_rates <- c(1.0, exchange_rates |>  pluck("GBP"), exchange_rates |> pluck("USD"),exchange_rates |> pluck("CHF"), NA)
 
 #----------------------------------------------------------------------------------------------------------------------------
 # DOAJ dataset
@@ -74,25 +76,23 @@ useful_cols_doaj <- c('Journal title', 'Journal URL', 'Journal ISSN (print versi
                       "Average number of weeks between article submission and publication",
                       "Journal license", "Subjects")
 
-#manually fix subject category for one journal where the information is missing in DOAJ
-doaj_data$Subjects[doaj_data$`Journal title` == "Frontiers in Human Neuroscience"] <- "Medicine"
 
-#filter rows
-doaj_data <- doaj_data %>% select(one_of(useful_cols_doaj))
+#filter columns
+doaj_data <- doaj_data |>  select(all_of(useful_cols_doaj))
 
-APC_amount <- doaj_data$`APC amount` %>% str_split(" ") %>% map(first) %>% unlist() %>% as.numeric()
-APC_currency <- doaj_data$`APC amount` %>% str_split(" ") %>% map(last) %>% unlist()
+APC_amount <- doaj_data$`APC amount`  |>  str_split(" ")  |>  map(first)  |>  unlist()  |>  as.numeric()
+APC_currency <- doaj_data$`APC amount`  |>  str_split(" ")  |>  map(last)  |>  unlist()
 
-doaj_data <- doaj_data %>%
-  mutate(Currency = APC_currency) %>%
-  mutate(`APC amount` = APC_amount) %>%
+doaj_data <- doaj_data |>
+  mutate(Currency = APC_currency,
+         `APC amount` = APC_amount) |>
   rename(`Full text language` = `Languages in which the journal accepts manuscripts`,
          `Journal article processing charges (APCs)` = APC,
-         `Average number of weeks between submission and publication` = `Average number of weeks between article submission and publication`) %>%
-  filter(`Full text language` %>% str_detect(full_text_languages)) %>% #English only journals
-  filter(grepl(paste(subjects_included, collapse = "|"), `Subjects`)) %>%
-  filter(!grepl(paste(subjects_excluded, collapse = "|"), `Subjects`)) %>% #Which categories to use?
-  filter(`Has other fees` == "No") %>% #Take only journals without submission fee
+         `Average number of weeks between submission and publication` = `Average number of weeks between article submission and publication`) |>
+  filter(`Full text language` |>  str_detect(full_text_languages)) |>  #English only journals
+  filter(grepl(paste(subjects_included, collapse = "|"), `Subjects`)) |>
+  filter(!grepl(paste(subjects_excluded, collapse = "|"), `Subjects`)) |>  #Which categories to use?
+  filter(`Has other fees` == "No") |>  #Take only journals without submission fee
   filter(`Currency` %in% APC_currencies_included | is.na(`Currency`))
 
 
@@ -102,9 +102,9 @@ doaj_data <- doaj_data %>%
 doaj_data <- doaj_data[!sapply(doaj_data$`Journal title`, is_regional_journal),]
 
 
-#modify and merge APC columns to condese information in one column
-doaj_data <- doaj_data %>%
-  mutate(Currency = substr(Currency, 1, 3)) %>%
+#modify and merge APC columns to condense information in one column
+doaj_data <- doaj_data |>
+  mutate(Currency = substr(Currency, 1, 3)) |>
   mutate(APC = `APC amount`)
 doaj_data[is.na(doaj_data$Currency), "Currency"] <- "-"
 
@@ -116,28 +116,43 @@ doaj_data[noAPC_idx, "APC"] <- doaj_data[noAPC_idx, "Journal article processing 
 
 
 #create column with APCs converted to EUR
-doaj_data <- doaj_data %>%
+doaj_data <- doaj_data |>
   mutate(`APC in EUR (including 19% taxes)` = round( (1/exchange_rates[Currency]) * ifelse(is.na(`APC amount`), 0, `APC amount`) * 1.19))
 
 #for those journals without APCs set coverted amount to 0 Eur
 no_APC_journal <- doaj_data$`Journal article processing charges (APCs)` == "No"
 doaj_data$`APC in EUR (including 19% taxes)`[no_APC_journal] <- 0
 doaj_data$`APC in EUR (including 19% taxes)`[is.na(doaj_data$`APC in EUR (including 19% taxes)`)] <- 0
-doaj_data <- doaj_data %>%
+doaj_data <- doaj_data |>
   mutate(`APC below 2000 EUR` = logical_to_yes_no(`APC in EUR (including 19% taxes)` < 2000))
 
 #add information on special terms of the Charite library for specific journals
+lib_list <- read_excel("Datasets/DOAJ-2023_library.xlsx") |>
+  select(`Journal title`, contains("ISSN"), Publisher, `förderfähig oder Diamond`) |>
+  mutate(has_special_conditions2 = case_when(
+    `förderfähig oder Diamond` == "Diamond" ~ "diamond",
+    .default = "no"
+  ))
+
+
+# check for duplicates, should be unique
+dupes <- lib_list |>
+  janitor::get_dupes(c(`Journal title`, Publisher, `Journal ISSN (print version)`, `Journal EISSN (online version)`))
+
+
 special_conditions_publishers <- c("Cambridge University Press",
                                  "MDPI AG", "JMIR Publications")
 special_conditions_journals <- c("SAGE Open", "SAGE Open Medicine",
                                  "SAGE Open Medical Case Reports")
-journals_not_fundable <- c("Cancers", "Cells",
-                           "International Journal of Environmental Research and Public Health",
-                           "International Journal of Molecular Sciences",
-                           "Journal of Clinical Medicine", "Marine Drugs",
-                           "Materials", "Molecules", "Nanomaterials",
-                           "Nutrients", "Remote Sensing", "Sensors",
-                           "Toxins", "Viruses")
+journals_not_fundable <- c(
+  # "Cancers", "Cells",
+  # "International Journal of Environmental Research and Public Health",
+  # "International Journal of Molecular Sciences",
+  # "Journal of Clinical Medicine",
+  # "Molecules", "Nutrients", "Viruses"
+  "Marine Drugs",
+  "Materials", "Nanomaterials", "Remote Sensing", "Sensors", # not on list??
+  "Toxins")
 
 has_special_conditions <- doaj_data$Publisher %in% special_conditions_publishers |
                           doaj_data$`Journal title` %in% special_conditions_journals
@@ -147,6 +162,8 @@ doaj_data[not_fundable,][["APC below 2000 EUR"]] <- "no"
 
 deal_publishers <- c("SpringerOpen", "Nature Publishing Group",
                      "Adis, Springer Healthcare", "Wiley")
+
+
 has_deal_conditions <- doaj_data$Publisher %in% deal_publishers
 doaj_data[has_deal_conditions & doaj_data$`APC below 2000 EUR` == "yes",][["APC below 2000 EUR"]] <- "yes, also under DEAL"
 doaj_data[has_deal_conditions & doaj_data$`APC below 2000 EUR` == "no",][["APC below 2000 EUR"]] <- "no, but DEAL special terms"
@@ -158,25 +175,25 @@ doaj_data[has_deal_conditions & doaj_data$`APC below 2000 EUR` == "no",][["APC b
 
 #simplify subject categories
 subjects_simplified <- lapply(doaj_data$Subjects, subject_simplification)
-doaj_data <- doaj_data %>%
-  add_column(`Subject category 1` = sapply(subjects_simplified, "[[", 1)) %>%
-  add_column(`Subject category 2` = sapply(subjects_simplified, "[[", 2))
+doaj_data <- doaj_data |>
+  add_column(`Subject category 1` = sapply(subjects_simplified, "[[", 1),
+             `Subject category 2` = sapply(subjects_simplified, "[[", 2))
 
 
 #rename some columns
-doaj_data <- doaj_data %>%
-  rename(pISSN = `Journal ISSN (print version)`) %>%
-  rename(eISSN = `Journal EISSN (online version)`) %>%
-  rename(`APC drop` = `Journal article processing charges (APCs)`) %>%
-  rename(`Journal article processing charges (APCs)` = APC)
+doaj_data <- doaj_data |>
+  rename(pISSN = `Journal ISSN (print version)`,
+         eISSN = `Journal EISSN (online version)`,
+         `APC drop` = `Journal article processing charges (APCs)`,
+         `Journal article processing charges (APCs)` = APC)
 
 
 #drop some columns
-doaj_data <- doaj_data %>%
+doaj_data <- doaj_data |>
   select(-`Has other fees`, -`Other fees information URL`,
          -`APC drop`, -`APC amount`, -Subjects)
 
-
+unique(doaj_data$`APC below 2000 EUR`)
 #----------------------------------------------------------------------------------------------------------------------------
 # PMC dataset
 #----------------------------------------------------------------------------------------------------------------------------
@@ -184,22 +201,22 @@ doaj_data <- doaj_data %>%
 pmc_data <- read_csv(pmc_filename)
 
 useful_cols_pmc <- c("Journal title", "pISSN", "eISSN", "Publisher")
-pmc_data <- pmc_data %>% select(one_of(useful_cols_pmc))
+pmc_data <- pmc_data |> select(one_of(useful_cols_pmc))
 
 
 #----------------------------------------------------------------------------------------------------------------------------
 # Scopus dataset
 #----------------------------------------------------------------------------------------------------------------------------
 
-scopus_data <-  read_delim(sjr_filename, delim = ";", locale = locale(decimal_mark = ","))#read.xls(sjr_filename) %>% as_tibble()
+scopus_data <-  read_delim(sjr_filename, delim = ";", locale = locale(decimal_mark = ","))#read.xls(sjr_filename) |> as_tibble()
 
 useful_cols_scopus <- c("Title", "Issn", "SJR", "SJR Best Quartile")
-scopus_data <- scopus_data %>%
-  select(one_of(useful_cols_scopus)) %>%
-  separate(Issn, into = c("eISSN", "pISSN")) %>%
-  rename(`SJR Impact` = SJR) %>%
-  mutate(`SJR Impact` = as.double(as.character(`SJR Impact`))) %>%
-  mutate(`SJR Best Quartile` = as.character(`SJR Best Quartile`))
+scopus_data <- scopus_data |>
+  select(one_of(useful_cols_scopus)) |>
+  separate(Issn, into = c("eISSN", "pISSN")) |>
+  rename(`SJR Impact` = SJR) |>
+  mutate(`SJR Impact` = as.double(as.character(`SJR Impact`)),
+         `SJR Best Quartile` = as.character(`SJR Best Quartile`))
 scopus_data$eISSN[scopus_data$eISSN == ""] <- NA
 
 #introduce '-' character in the middle of eISSN/pISSN to make it consistent with other data sources
@@ -211,7 +228,7 @@ scopus_data$pISSN[scopus_data$pISSN == "NA-NA"] <- NA
 scopus_data$eISSN[scopus_data$eISSN == "NA-NA"] <- NA
 
 #filter all entries that have neither an eISSN nor an pISSN
-scopus_data <- scopus_data %>%
+scopus_data <- scopus_data |>
   filter(!(is.na(eISSN) & is.na(pISSN)))
 
 
@@ -222,35 +239,35 @@ scopus_data <- scopus_data %>%
 #DOAJ and PMC join
 
 #first join on print ISSN
-joined_data_pISSN <- doaj_data %>%
-  filter(!is.na(pISSN)) %>%
+joined_data_pISSN <- doaj_data |>
+  filter(!is.na(pISSN)) |>
   left_join(select(pmc_data, -eISSN), by = "pISSN", suffix = c(".doaj", ".pmc")) #remove other key in pmc_data before joining to avoid double second key cols
 
 #second join on eISSN
-joined_data_eISSN <- doaj_data %>%
-  filter(!is.na(eISSN)) %>%
+joined_data_eISSN <- doaj_data |>
+  filter(!is.na(eISSN)) |>
   left_join(select(pmc_data, -pISSN), by = "eISSN", suffix = c(".doaj", ".pmc"))
 
 #some entries have wrong metadata, where the eISSN in one dataset corresponds to
 #the pISSN in the other dataset
-joined_data_mixed_ISSN <- doaj_data %>%
-  filter(!is.na(pISSN)) %>%
+joined_data_mixed_ISSN <- doaj_data |>
+  filter(!is.na(pISSN)) |>
   left_join(select(pmc_data, -pISSN), by = c("pISSN" = "eISSN"),
             suffix = c(".doaj", ".pmc"))
 
 
 #combine both join versions and remove duplicates
-joined_data <- joined_data_pISSN %>%
-  union(joined_data_eISSN) %>%
+joined_data <- joined_data_pISSN |>
+  union(joined_data_eISSN) |>
   union(joined_data_mixed_ISSN)
 
 #add column is_PMC_listed by computing which rows have journal title.pmc entry
-joined_data <- joined_data %>%
-  mutate(is_PMC_listed = !is.na(`Journal title.pmc`)) %>%
-  mutate(is_PMC_listed = logical_to_yes_no(is_PMC_listed))
+joined_data <- joined_data |>
+  mutate(is_PMC_listed = !is.na(`Journal title.pmc`),
+         is_PMC_listed = logical_to_yes_no(is_PMC_listed))
 
 #only select PMC-listed journals?
-joined_data <- joined_data %>%
+joined_data <- joined_data |>
   filter(is_PMC_listed == "yes")
 
 
@@ -266,9 +283,9 @@ SJR_vec <- map2_dbl(joined_data$eISSN, joined_data$pISSN, get_scopus_var,
 SJR_quartile_vec <- map2_chr(joined_data$eISSN, joined_data$pISSN, get_scopus_var,
                              scopus_data = scopus_data, varname = "SJR Best Quartile")
 
-joined_data <- joined_data %>%
-  add_column(`SJR Impact` = SJR_vec) %>%
-  add_column(`SJR Subject Category Best Quartile` = SJR_quartile_vec)
+joined_data <- joined_data |>
+  add_column(`SJR Impact` = SJR_vec,
+             `SJR Subject Category Best Quartile` = SJR_quartile_vec)
 
 
 #----------------------------------------------------------------------------------------------------------------------------
@@ -283,10 +300,10 @@ final_col <- c('Journal title.doaj',
                "Average number of weeks between submission and publication",
                'Subject category 1', 'Subject category 2', 'Journal license',
                'Journal URL', 'Publisher.doaj', "pISSN", "eISSN")
-joined_data <- joined_data %>%
-  select(one_of(final_col)) %>%
-  rename(`Journal title` = `Journal title.doaj`) %>%
-  rename(Publisher = `Publisher.doaj`) %>%
+joined_data <- joined_data |>
+  select(all_of(final_col)) |>
+  rename(`Journal title` = `Journal title.doaj`,
+         Publisher = `Publisher.doaj`) |>
   arrange(`Subject category 1`, desc(`SJR Impact`))
 
 #filter duplicated journals (again, since some duplicates reappeared for some unknown reason)
